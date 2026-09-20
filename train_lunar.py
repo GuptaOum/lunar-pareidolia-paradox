@@ -10,8 +10,6 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
 
-torch.backends.cudnn.enabled = False
-
 # Try importing PEFT and Transformers for LoRA + Google ViT. 
 
 # If not available, instructions will guide the user to pip install them.
