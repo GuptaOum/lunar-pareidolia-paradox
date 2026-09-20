@@ -39,9 +39,9 @@ $cmd = @"
 unzip -q train_images.zip
 unzip -q eval_images.zip
 source activate pytorch 2>/dev/null || source /opt/pytorch/bin/activate 2>/dev/null || true
-pip install transformers peft timm scikit-learn pandas tqdm
-python train_lunar.py
-python train_lunar.py predict
+python3 -m pip install transformers peft timm scikit-learn pandas tqdm
+python3 train_lunar.py
+python3 train_lunar.py predict
 "@
 Invoke-Expression "$SSH '$cmd'"
 
