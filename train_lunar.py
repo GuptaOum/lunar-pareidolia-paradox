@@ -72,20 +72,20 @@ class LunarDataset(Dataset):
         if self.is_test:
             return image, img_name
         else:
-            # Regression requires float labels
-            label = torch.tensor([float(row['label'])], dtype=torch.float32)
+            # Classification requires integer labels
+            label = int(row['label'])
             return image, label
 
 # --- Model Building ---
 def get_model():
-    print("Using Torchvision ResNet-50 for Classical Regression (MSELoss)...")
+    print("Using Torchvision ResNet-50 for Classification...")
     model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
     
     for param in model.parameters():
         param.requires_grad = False
         
     num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 1) # 1 output for regression
+    model.fc = nn.Linear(num_ftrs, 2) # 2 outputs for classification
     return model
 
 def train():
@@ -103,7 +103,7 @@ def train():
     model = get_model()
     model.to(DEVICE)
     
-    criterion = nn.MSELoss() # REGRESSION LOSS
+    criterion = nn.CrossEntropyLoss() # CLASSIFICATION LOSS
     best_bal_acc = 0.0
     
     FREEZE_EPOCHS = 10
@@ -148,8 +148,7 @@ def train():
                 loss = criterion(outputs, labels)
                 val_loss += loss.item() * images.size(0)
                 
-                # Threshold regression outputs for classification metrics
-                preds = (outputs >= 0.5).float()
+                preds = torch.argmax(outputs, dim=1)
                 
                 all_preds.extend(preds.cpu().numpy().flatten())
                 all_labels.extend(labels.cpu().numpy().flatten())
@@ -157,7 +156,7 @@ def train():
         val_loss /= len(val_loader.dataset)
         bal_acc = balanced_accuracy_score(all_labels, all_preds)
         
-        print(f"Epoch {epoch+1} - Train MSE: {train_loss:.4f}, Val MSE: {val_loss:.4f}, Val Balanced Acc: {bal_acc:.4f}")
+        print(f"Epoch {epoch+1} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Val Balanced Acc: {bal_acc:.4f}")
         
         if bal_acc > best_bal_acc:
             best_bal_acc = bal_acc
@@ -184,7 +183,7 @@ def inference():
         for images, img_names in tqdm(test_loader, desc="Inference"):
             images = images.to(DEVICE)
             outputs = model(images)
-            preds = (outputs >= 0.5).int()
+            preds = torch.argmax(outputs, dim=1)
             
             for name, pred in zip(img_names, preds.cpu().numpy().flatten()):
                 results.append({"image_id": name, "label": pred})
