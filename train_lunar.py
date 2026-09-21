@@ -120,7 +120,7 @@ def train():
                                   total_samples / (2.0 * count_1)], dtype=torch.float32).to(DEVICE)
     criterion = nn.CrossEntropyLoss(weight=class_weights)
     
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4)
     best_bal_acc = 0.0
     
     TOTAL_EPOCHS = 20
