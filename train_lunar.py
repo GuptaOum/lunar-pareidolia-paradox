@@ -78,29 +78,34 @@ data_transform = transforms.Compose([
 
 # --- Model Building ---
 def get_model():
-    if USE_HUGGINGFACE_PEFT:
-        print("Using Google ViT with LoRA via PEFT...")
-        # 1. Load Pre-trained Google ViT
-        model_name = "google/vit-base-patch16-224-in21k"
-        model = ViTForImageClassification.from_pretrained(
-            model_name,
+    """Load pre-trained ResNet-50 and apply LoRA."""
+    try:
+        from transformers import AutoModelForImageClassification
+        from peft import LoraConfig, get_peft_model
+        
+        print("Using Microsoft ResNet-50 with LoRA via PEFT...")
+        # Load the base model
+        model = AutoModelForImageClassification.from_pretrained(
+            "microsoft/resnet-50",
             num_labels=2,
             ignore_mismatched_sizes=True
         )
         
-        # 2. Apply LoRA (Low-Rank Adaptation)
+        # Configure LoRA for Conv2d layers
         config = LoraConfig(
             r=16, 
             lora_alpha=16, 
-            target_modules="all-linear", 
+            target_modules=["convolution"], 
             lora_dropout=0.1, 
             bias="none", 
             modules_to_save=["classifier"]
         )
+        
         model = get_peft_model(model, config)
         model.print_trainable_parameters()
         return model, True
-    else:
+
+    except ImportError:
         print("PEFT/Transformers not found. Falling back to ResNet18 fine-tuning...")
         print("Install `pip install peft transformers` to use the Google ViT + LoRA approach.")
         model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
