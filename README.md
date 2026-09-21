@@ -49,7 +49,10 @@ python train_lunar.py predict   # Runs inference
 | `google/vit-base-patch16-224-in21k` | ViT + LoRA (`all-linear`) | Frozen | **76.47%** | 3 |
 | `microsoft/resnet-50` | ResNet50 + LoRA (`convolution`) | Frozen | **72.47%** | 4 |
 | `torchvision/resnet50` | Classical (Freeze + Unfreeze) | Unfrozen (Epoch 11) | **67.92%** | 11 |
+| `google/vit-base-patch16-224-in21k` | ViT + LoRA + Augmentation (Blur/Contrast) | Frozen | **65.49%** | 5 |
 
-**Note on Methodology:** The classical "Freeze/Unfreeze" manual transfer learning approach performed worst and suffered from severe catastrophic overfitting when the 25-million parameter backbone was unfrozen (Training Loss fell to 0.01, but Validation Loss spiked to 1.55). The parameter-efficient LoRA adapters definitively performed best by locking the deep knowledge and preventing overfitting!
+**Note on Methodology:** 
+1. **Classical vs LoRA:** The manual transfer learning approach performed worst and suffered from severe catastrophic overfitting when the 25-million parameter backbone was unfrozen. LoRA adapters definitively performed best by locking the deep knowledge and preventing overfitting.
+2. **Augmentation is Destructive:** Standard CV augmentations (like `RandomBrightnessContrast` or `GaussianBlur`) actively destroyed the model's accuracy (dropping it from 76% to 65% and eventually causing model collapse). The labels for lunar surface crops are highly sensitive to subtle textural sharpness and physical shadow gradients; blurring or crushing these physical clues destroys the dataset's scientific geometry.
 
 The model optimizes for **Balanced Accuracy** across both the "Rise" and "Depth" classes to ensure minority features aren't overpowered. Output predictions are saved to `submission.csv`.
