@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
@@ -11,6 +10,8 @@ import numpy as np
 from sklearn.metrics import balanced_accuracy_score
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from transformers import ViTForImageClassification, ViTConfig
+from peft import LoraConfig, get_peft_model
 
 # --- Configuration ---
 TRAIN_IMG_DIR = "./train_images"
@@ -24,12 +25,13 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # --- Transforms ---
+# PHYSICS CLUE: We MUST NOT use HorizontalFlip or Rotate, as it destroys the shadow geometry!
+# VerticalFlip is safe because left/right shadows stay on the same side.
 train_transform = A.Compose([
     A.Resize(224, 224),
-    A.HorizontalFlip(p=0.5),
     A.VerticalFlip(p=0.5),
-    A.RandomBrightnessContrast(p=0.2),
-    A.ShiftScaleRotate(shift_limit=0.0625, scale_limit=0.1, rotate_limit=15, p=0.5),
+    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
+    A.GaussianBlur(blur_limit=(3, 7), p=0.3),
     A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
     ToTensorV2()
 ])
@@ -62,7 +64,6 @@ class LunarDataset(Dataset):
         sun_azimuth = row['sun_azimuth_angle']
         image = image.rotate(-sun_azimuth, resample=Image.BILINEAR)
         
-        # Convert to numpy for albumentations
         image = np.array(image)
         
         if self.transform:
@@ -72,21 +73,34 @@ class LunarDataset(Dataset):
         if self.is_test:
             return image, img_name
         else:
-            # Classification requires integer labels
             label = int(row['label'])
             return image, label
 
 # --- Model Building ---
 def get_model():
-    print("Using Torchvision ResNet-50 for Classification...")
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+    print("Using Google ViT + LoRA (all-linear) for Classification...")
+    model = ViTForImageClassification.from_pretrained(
+        "google/vit-base-patch16-224-in21k",
+        num_labels=2,
+        ignore_mismatched_sizes=True
+    )
     
+    # Freeze the base model
     for param in model.parameters():
         param.requires_grad = False
         
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, 2) # 2 outputs for classification
-    return model
+    config = LoraConfig(
+        r=16,
+        lora_alpha=16,
+        target_modules=["query", "value", "dense"], # all-linear style
+        lora_dropout=0.1,
+        bias="none",
+        modules_to_save=["classifier"],
+    )
+    
+    peft_model = get_peft_model(model, config)
+    peft_model.print_trainable_parameters()
+    return peft_model
 
 def train():
     print("Loading data...")
@@ -103,23 +117,13 @@ def train():
     model = get_model()
     model.to(DEVICE)
     
-    criterion = nn.CrossEntropyLoss() # CLASSIFICATION LOSS
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     best_bal_acc = 0.0
     
-    FREEZE_EPOCHS = 10
-    UNFREEZE_EPOCHS = 15
-    TOTAL_EPOCHS = FREEZE_EPOCHS + UNFREEZE_EPOCHS
+    TOTAL_EPOCHS = 20
     
     for epoch in range(TOTAL_EPOCHS):
-        if epoch == 0:
-            print("--- PHASE 1: FROZEN BACKBONE ---")
-            optimizer = torch.optim.AdamW(model.fc.parameters(), lr=1e-3)
-        elif epoch == FREEZE_EPOCHS:
-            print("--- PHASE 2: UNFROZEN BACKBONE ---")
-            for param in model.parameters():
-                param.requires_grad = True
-            optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
-            
         model.train()
         train_loss = 0.0
         
@@ -128,7 +132,7 @@ def train():
             
             optimizer.zero_grad()
             outputs = model(images)
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs.logits, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * images.size(0)
@@ -145,10 +149,10 @@ def train():
                 images, labels = images.to(DEVICE), labels.to(DEVICE)
                 
                 outputs = model(images)
-                loss = criterion(outputs, labels)
+                loss = criterion(outputs.logits, labels)
                 val_loss += loss.item() * images.size(0)
                 
-                preds = torch.argmax(outputs, dim=1)
+                preds = torch.argmax(outputs.logits, dim=1)
                 
                 all_preds.extend(preds.cpu().numpy().flatten())
                 all_labels.extend(labels.cpu().numpy().flatten())
@@ -161,7 +165,7 @@ def train():
         if bal_acc > best_bal_acc:
             best_bal_acc = bal_acc
             save_path = os.path.join(OUTPUT_DIR, "best_model.pth")
-            torch.save(model.state_dict(), save_path)
+            model.save_pretrained(save_path)
             print(f"Saved best model with Balanced Acc: {bal_acc:.4f}")
             
     print("Training complete.")
@@ -172,8 +176,13 @@ def inference():
     test_dataset = LunarDataset(test_df, TEST_IMG_DIR, transform=val_transform, is_test=True)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
     
-    model = get_model()
-    model.load_state_dict(torch.load(os.path.join(OUTPUT_DIR, "best_model.pth")))
+    base_model = ViTForImageClassification.from_pretrained(
+        "google/vit-base-patch16-224-in21k",
+        num_labels=2,
+        ignore_mismatched_sizes=True
+    )
+    from peft import PeftModel
+    model = PeftModel.from_pretrained(base_model, os.path.join(OUTPUT_DIR, "best_model.pth"))
     model.to(DEVICE)
     model.eval()
     
@@ -183,7 +192,7 @@ def inference():
         for images, img_names in tqdm(test_loader, desc="Inference"):
             images = images.to(DEVICE)
             outputs = model(images)
-            preds = torch.argmax(outputs, dim=1)
+            preds = torch.argmax(outputs.logits, dim=1)
             
             for name, pred in zip(img_names, preds.cpu().numpy().flatten()):
                 results.append({"image_id": name, "label": pred})
