@@ -78,53 +78,24 @@ data_transform = transforms.Compose([
 
 # --- Model Building ---
 def get_model():
-    """Load pre-trained Google ViT and apply LoRA."""
-    try:
-        from transformers import ViTForImageClassification
-        from peft import LoraConfig, get_peft_model
+    """Load standard ResNet-50 for classical transfer learning."""
+    print("Using Torchvision ResNet-50 for classical transfer learning...")
+    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+    
+    # Freeze the entire backbone initially
+    for param in model.parameters():
+        param.requires_grad = False
         
-        print("Using Google ViT with LoRA via PEFT...")
-        # Load the base model
-        model = ViTForImageClassification.from_pretrained(
-            "google/vit-base-patch16-224-in21k",
-            num_labels=2,
-            ignore_mismatched_sizes=True
-        )
-        
-        # Configure LoRA
-        config = LoraConfig(
-            r=16, 
-            lora_alpha=16, 
-            target_modules="all-linear", 
-            lora_dropout=0.1, 
-            bias="none", 
-            modules_to_save=["classifier"]
-        )
-        
-        model = get_peft_model(model, config)
-        model.print_trainable_parameters()
-        return model, True
-
-    except ImportError:
-        print("PEFT/Transformers not found. Falling back to ResNet18 fine-tuning...")
-        print("Install `pip install peft transformers` to use the Google ViT + LoRA approach.")
-        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
-        # Freeze backbone
-        for param in model.parameters():
-            param.requires_grad = False
-        # Replace head
-        num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, 2)
-        return model, False
+    # Replace the final fully connected layer (this will be unfrozen by default)
+    num_ftrs = model.fc.in_features
+    model.fc = nn.Linear(num_ftrs, 2)
+    return model, False
 
 def train():
     # Load Data
     print("Loading data...")
     df = pd.read_csv(TRAIN_META_CSV)
     
-    # Check if images are actually in a subfolder. If so, modify TRAIN_IMG_DIR above.
-    
-    # Train-val split
     train_df, val_df = train_test_split(df, test_size=0.2, stratify=df['label'], random_state=42)
     
     train_dataset = LunarDataset(train_df, TRAIN_IMG_DIR, transform=data_transform)
@@ -137,17 +108,34 @@ def train():
     model, is_huggingface = get_model()
     model.to(DEVICE)
     
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     criterion = nn.CrossEntropyLoss()
-    
     best_bal_acc = 0.0
     
+    FREEZE_EPOCHS = 5
+    UNFREEZE_EPOCHS = 15
+    TOTAL_EPOCHS = FREEZE_EPOCHS + UNFREEZE_EPOCHS
+    
     # Training Loop
-    for epoch in range(EPOCHS):
+    for epoch in range(TOTAL_EPOCHS):
+        
+        # --- PHASE MANAGEMENT ---
+        if epoch == 0:
+            print("--- PHASE 1: FROZEN BACKBONE ---")
+            # Only train the FC layer
+            optimizer = torch.optim.AdamW(model.fc.parameters(), lr=1e-3)
+        
+        elif epoch == FREEZE_EPOCHS:
+            print("--- PHASE 2: UNFROZEN BACKBONE (FINE-TUNING) ---")
+            # Unfreeze everything
+            for param in model.parameters():
+                param.requires_grad = True
+            # Train the whole model with a much smaller learning rate
+            optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
+            
         model.train()
         train_loss = 0.0
         
-        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Train]"):
+        for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{TOTAL_EPOCHS} [Train]"):
             images, labels = images.to(DEVICE), labels.to(DEVICE)
             
             optimizer.zero_grad()
@@ -170,7 +158,7 @@ def train():
         all_labels = []
         
         with torch.no_grad():
-            for images, labels in tqdm(val_loader, desc=f"Epoch {epoch+1}/{EPOCHS} [Val]"):
+            for images, labels in tqdm(val_loader, desc=f"Epoch {epoch+1}/{TOTAL_EPOCHS} [Val]"):
                 images, labels = images.to(DEVICE), labels.to(DEVICE)
                 
                 if is_huggingface:
@@ -197,6 +185,7 @@ def train():
             print(f"Saved best model with Balanced Acc: {bal_acc:.4f}")
             
     print("Training complete.")
+
 
 def inference():
     print("Starting inference on test set...")
