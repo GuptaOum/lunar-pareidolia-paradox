@@ -46,7 +46,10 @@ python train_lunar.py predict   # Runs inference
 
 | Architecture | Approach | Backbone Status | Best Val Balanced Acc | Epoch Achieved |
 |--------------|----------|-----------------|-----------------------|----------------|
-| `google/vit-base-patch16-224-in21k` | ViT + LoRA (`all-linear`) | Frozen | **74.53%** | 1 |
+| `google/vit-base-patch16-224-in21k` | ViT + LoRA (`all-linear`) | Frozen | **76.47%** | 3 |
 | `microsoft/resnet-50` | ResNet50 + LoRA (`convolution`) | Frozen | **72.47%** | 4 |
+| `torchvision/resnet50` | Classical (Freeze + Unfreeze) | Unfrozen (Epoch 11) | **67.92%** | 11 |
+
+**Note on Methodology:** The classical "Freeze/Unfreeze" manual transfer learning approach performed worst and suffered from severe catastrophic overfitting when the 25-million parameter backbone was unfrozen (Training Loss fell to 0.01, but Validation Loss spiked to 1.55). The parameter-efficient LoRA adapters definitively performed best by locking the deep knowledge and preventing overfitting!
 
 The model optimizes for **Balanced Accuracy** across both the "Rise" and "Depth" classes to ensure minority features aren't overpowered. Output predictions are saved to `submission.csv`.
