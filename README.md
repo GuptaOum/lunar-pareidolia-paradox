@@ -42,5 +42,11 @@ python train_lunar.py           # Trains the model
 python train_lunar.py predict   # Runs inference
 ```
 
-## 📊 Evaluation
+## 📊 Experiments & Results
+
+| Architecture | Approach | Backbone Status | Best Val Balanced Acc | Epoch Achieved |
+|--------------|----------|-----------------|-----------------------|----------------|
+| `google/vit-base-patch16-224-in21k` | ViT + LoRA (`all-linear`) | Frozen | **74.53%** | 1 |
+| `microsoft/resnet-50` | ResNet50 + LoRA (`convolution`) | Frozen | *Training In Progress* | N/A |
+
 The model optimizes for **Balanced Accuracy** across both the "Rise" and "Depth" classes to ensure minority features aren't overpowered. Output predictions are saved to `submission.csv`.
