@@ -28,7 +28,7 @@ TEST_IMG_DIR = "./eval_images"
 TEST_META_CSV = "./test_metadata.csv"
 OUTPUT_DIR = "./lunar_model_output"
 BATCH_SIZE = 32
-EPOCHS = 10
+EPOCHS = 20
 LEARNING_RATE = 1e-3
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -78,24 +78,24 @@ data_transform = transforms.Compose([
 
 # --- Model Building ---
 def get_model():
-    """Load pre-trained ResNet-50 and apply LoRA."""
+    """Load pre-trained Google ViT and apply LoRA."""
     try:
-        from transformers import AutoModelForImageClassification
+        from transformers import ViTForImageClassification
         from peft import LoraConfig, get_peft_model
         
-        print("Using Microsoft ResNet-50 with LoRA via PEFT...")
+        print("Using Google ViT with LoRA via PEFT...")
         # Load the base model
-        model = AutoModelForImageClassification.from_pretrained(
-            "microsoft/resnet-50",
+        model = ViTForImageClassification.from_pretrained(
+            "google/vit-base-patch16-224-in21k",
             num_labels=2,
             ignore_mismatched_sizes=True
         )
         
-        # Configure LoRA for Conv2d layers
+        # Configure LoRA
         config = LoraConfig(
             r=16, 
             lora_alpha=16, 
-            target_modules=["convolution"], 
+            target_modules="all-linear", 
             lora_dropout=0.1, 
             bias="none", 
             modules_to_save=["classifier"]
