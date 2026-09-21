@@ -28,6 +28,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # --- Transforms ---
 # PHYSICS CLUE: No destructive augmentations!
 train_transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(p=0.5),
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
@@ -84,8 +85,8 @@ def get_model():
         param.requires_grad = False
         
     config = LoraConfig(
-        r=16,
-        lora_alpha=16,
+        r=32,
+        lora_alpha=64,
         target_modules="all-linear", # all-linear style
         lora_dropout=0.1,
         bias="none",
@@ -111,11 +112,19 @@ def train():
     model = get_model()
     model.to(DEVICE)
     
-    criterion = nn.CrossEntropyLoss()
+    class_counts = train_df['label'].value_counts().sort_index()
+    total_samples = len(train_df)
+    count_0 = class_counts.get(0, 1)
+    count_1 = class_counts.get(1, 1)
+    class_weights = torch.tensor([total_samples / (2.0 * count_0), 
+                                  total_samples / (2.0 * count_1)], dtype=torch.float32).to(DEVICE)
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
+    
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
     best_bal_acc = 0.0
     
     TOTAL_EPOCHS = 20
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=TOTAL_EPOCHS)
     
     for epoch in range(TOTAL_EPOCHS):
         model.train()
@@ -132,6 +141,7 @@ def train():
             train_loss += loss.item() * images.size(0)
             
         train_loss /= len(train_loader.dataset)
+        scheduler.step()
         
         model.eval()
         val_loss = 0.0
