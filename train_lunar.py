@@ -3,13 +3,14 @@ import torch
 import torch.nn as nn
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import balanced_accuracy_score
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+
+from torchvision import transforms
 from transformers import ViTForImageClassification, ViTConfig
 from peft import LoraConfig, get_peft_model
 
@@ -25,21 +26,17 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # --- Transforms ---
-# PHYSICS CLUE: We MUST NOT use HorizontalFlip or Rotate, as it destroys the shadow geometry!
-# VerticalFlip is safe because left/right shadows stay on the same side.
-train_transform = A.Compose([
-    A.Resize(224, 224),
-    A.VerticalFlip(p=0.5),
-    A.RandomBrightnessContrast(brightness_limit=0.2, contrast_limit=0.2, p=0.5),
-    A.GaussianBlur(blur_limit=(3, 7), p=0.3),
-    A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
-    ToTensorV2()
+# PHYSICS CLUE: No destructive augmentations!
+train_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 ])
 
-val_transform = A.Compose([
-    A.Resize(224, 224),
-    A.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
-    ToTensorV2()
+val_transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 ])
 
 # --- Dataset Definition ---
@@ -64,11 +61,8 @@ class LunarDataset(Dataset):
         sun_azimuth = row['sun_azimuth_angle']
         image = image.rotate(-sun_azimuth, resample=Image.BILINEAR)
         
-        image = np.array(image)
-        
         if self.transform:
-            augmented = self.transform(image=image)
-            image = augmented['image']
+            image = self.transform(image)
             
         if self.is_test:
             return image, img_name
