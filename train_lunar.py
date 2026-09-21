@@ -111,7 +111,7 @@ def train():
     criterion = nn.CrossEntropyLoss()
     best_bal_acc = 0.0
     
-    FREEZE_EPOCHS = 5
+    FREEZE_EPOCHS = 10
     UNFREEZE_EPOCHS = 15
     TOTAL_EPOCHS = FREEZE_EPOCHS + UNFREEZE_EPOCHS
     
