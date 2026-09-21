@@ -92,7 +92,7 @@ def get_model():
     config = LoraConfig(
         r=16,
         lora_alpha=16,
-        target_modules=["query", "value", "dense"], # all-linear style
+        target_modules="all-linear", # all-linear style
         lora_dropout=0.1,
         bias="none",
         modules_to_save=["classifier"],
@@ -164,7 +164,7 @@ def train():
         
         if bal_acc > best_bal_acc:
             best_bal_acc = bal_acc
-            save_path = os.path.join(OUTPUT_DIR, "best_model.pth")
+            save_path = os.path.join(OUTPUT_DIR, "best_model")
             model.save_pretrained(save_path)
             print(f"Saved best model with Balanced Acc: {bal_acc:.4f}")
             
@@ -182,7 +182,7 @@ def inference():
         ignore_mismatched_sizes=True
     )
     from peft import PeftModel
-    model = PeftModel.from_pretrained(base_model, os.path.join(OUTPUT_DIR, "best_model.pth"))
+    model = PeftModel.from_pretrained(base_model, os.path.join(OUTPUT_DIR, "best_model"))
     model.to(DEVICE)
     model.eval()
     
