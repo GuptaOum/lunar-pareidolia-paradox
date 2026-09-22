@@ -102,11 +102,9 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 ## 📁 Repository Structure
 
 ```
-├── train.py                       # Main competition entrypoint for balanced ViT+LoRA training
-├── train_balanced_ensemble.py     # Multi-seed balanced ensemble training pipeline
-├── train_lunar.py                 # Core ViT + LoRA model definitions
+├── train.py                       # Main competition training pipeline (Balanced ViT + LoRA)
+├── train_lunar.py                 # ViT + LoRA model definitions & 5-fold CV architecture
 ├── inference.py                   # High-throughput ensemble inference engine
-├── test_balanced_3cycles.py       # 3-cycle cross-validation validation script
 ├── submission.csv                 # Final competition submission (2,000 predictions)
 ├── requirements.txt               # Complete Python dependencies
 └── README.md                      # Methodology, ablation benchmarks, and replication guide
