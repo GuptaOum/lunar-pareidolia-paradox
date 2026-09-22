@@ -12,7 +12,7 @@ To rigorously test the generalizability of the balanced ensemble against distrib
 
 | Metric | Score | Details / Interpretation |
 | :--- | :---: | :--- |
-| **Balanced Accuracy** | **89.14%** | Arithmetic mean of Crater and Hill recall |
+| **Balanced Accuracy** | **89.94%** | Arithmetic mean of Crater and Hill recall |
 | **Overall Accuracy** | **89.65%** | 1,793 / 2,000 images correctly classified |
 | **Crater Sensitivity (Class 0)** | **88.9%** | High sensitivity identifying concave depressions |
 | **Hill Sensitivity (Class 1)** | **89.4%** | Reliable discrimination of illuminated elevations |
@@ -37,7 +37,7 @@ How we systematically engineered the pipeline to surpass the 80% and 90% accurac
 | 1 | Baseline ViT (Standard sampling) | 77.12% | Heavy bias toward majority class (Hills 63.7%). Crater recall was low. |
 | 2 | ViT + LoRA (r=16, alpha=32) + Class Weights | 79.40% | Improved crater recall, but loss landscape was noisy with high variance. |
 | 3 | ViT + LoRA + **50/50 Balanced Resampling** | **82.36%** | Balanced gradient backpropagation; single-model breakthrough. |
-| 4 | **2-Seed Soft-Voting Ensemble (Champion)** | **89.93%** | Independent weight trajectories cancel out fringe edge-case noise. |
+| 4 | **2-Seed Soft-Voting Ensemble (Champion)** | **89.94%** | Independent weight trajectories cancel out fringe edge-case noise. |
 
 ---
 
