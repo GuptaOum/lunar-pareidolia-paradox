@@ -1,0 +1,12 @@
+# Ignore datasets and output directories
+train_images/
+eval_images/
+*.zip
+lunar_model_output/
+*.csv
+aws_train_lunar.ps1
+
+# Python
+__pycache__/
+*.pyc
+.env
