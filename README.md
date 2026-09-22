@@ -6,21 +6,7 @@ An end-to-end Computer Vision pipeline designed to solve **The Pareidolia Parado
 
 ---
 
-## 🚀 Performance Highlights
-
-| Metric | Score | Validation Context |
-| :--- | :--- | :--- |
-| **Ensemble Balanced Accuracy** | **89.93%** | Final multi-seed consensus evaluation |
-| **Raw Accuracy** | **90.00%** | Unseen 800-sample test set |
-| **Random 2,000-Image Benchmark** | **89.14% Balanced Accuracy** | Verified robustness across 2,000 random samples |
-| **Crater Recall (Class 0)** | **89.7%** | Solves majority-class bias completely |
-| **Hill Recall (Class 1)** | **90.2%** | Preserves high precision on elevated features |
-| **Single-Model Balanced Val Acc** | **82.36%** | Best standalone ViT checkpoint (Val Loss: 0.4838) |
-| **Stability Across Cycles** | **87.62% ± 0.91%** | Verified over 3 independent 600-sample cycles (1,800 images) |
-
----
-
-## 🔬 Random 2,000-Image Robustness Benchmark
+## 🚀 Model Performance (Random 2,000-Image Benchmark)
 
 To rigorously test the generalizability of the balanced ensemble against distribution shifts, the ensemble was evaluated on a random slice of **2,000 images**:
 
