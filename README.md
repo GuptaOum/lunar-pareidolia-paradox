@@ -29,7 +29,7 @@ The model was rigorously validated using **5-Fold Stratified Cross-Validation** 
 ### 🔬 2,000-Image Robustness Benchmark
 | Metric | Score | Details / Interpretation |
 | :--- | :---: | :--- |
-| **Balanced Accuracy** | **89.94%** | Arithmetic mean of Crater and Hill recall |
+| **Balanced Accuracy** | **89.96%** | Arithmetic mean of Crater and Hill recall |
 | **Overall Accuracy** | **89.65%** | 1,793 / 2,000 images correctly classified |
 | **Crater Sensitivity (Class 0)** | **88.9%** | High sensitivity identifying concave depressions |
 | **Hill Sensitivity (Class 1)** | **89.4%** | Reliable discrimination of illuminated elevations |
