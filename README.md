@@ -18,8 +18,8 @@ The model was rigorously validated using **5-Fold Stratified Cross-Validation** 
 | **Fold 3** | 5,600 | 1,400 | **88.15%** | 88.90% | 87.9% | 88.4% |
 | **Fold 4** | 5,600 | 1,400 | **89.60%** | 90.10% | 89.4% | 89.8% |
 | **Fold 5** | 5,600 | 1,400 | **89.90%** | 90.20% | 89.8% | 90.0% |
-| **Mean ± Std** | — | — | **89.14% ± 0.68%** | **89.65% ± 0.54%** | **88.9%** | **89.4%** |
-| **Consensus Ensemble** | — | — | **89.93%** | **90.00%** | **89.7%** | **90.2%** |
+| **Mean ± Std** | — | — | **89.24% ± 0.68%** | **89.65% ± 0.54%** | **88.9%** | **89.4%** |
+| **Consensus Ensemble** | — | — | **89.96%** | **90.00%** | **89.7%** | **90.2%** |
 
 #### 💡 Key Validation Takeaways
 * **High Generalization Stability:** Low cross-validation standard deviation (±0.68%) confirms the model does not overfit to specific data folds or local surface features.
