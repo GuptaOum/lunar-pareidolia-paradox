@@ -115,6 +115,7 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 ## 📦 Model Weights & Checkpoints
 
 The trained LoRA adapter weights for the ensemble models are available for direct public download:
+* **Hugging Face Hub:** [kjfk/lunar-pareidolia-vit-lora](https://huggingface.co/kjfk/lunar-pareidolia-vit-lora)
 * **Release Download:** [v1.0.0 Model Weights (model_weights.zip)](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/model_weights.zip)
 * **Direct Checkpoint (.pth):** [best_model.pth](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/best_model.pth)
 * **Adapter Format:** HuggingFace PEFT / SafeTensors (`adapter_model.safetensors`, `adapter_config.json`)
