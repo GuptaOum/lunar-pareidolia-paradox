@@ -39,7 +39,7 @@ Lunar shadows invert depending on the illumination angle, creating optical illus
 
 * **Rotation Angle Correction:** Each image is dynamically rotated counter-clockwise by `-sun_azimuth_angle` using bilinear interpolation:
 
-$$\theta_{\text{corrected}} = -\theta_{\text{sun\_azimuth}}$$
+$$\theta_{\text{corrected}} = -\theta_{\text{azimuth}}$$
 
 * **Physical Invariance:** This rotation mathematically fixes the sunlight direction directly to the **North (Top)** across every single image in the dataset.
 * **Physics Preservation:** Uncontrolled spatial flips (e.g., standard horizontal/vertical flips) were strictly omitted because they invert the shadow-casting geometry and violate physical illumination laws.
@@ -76,24 +76,25 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 ## 📁 Repository Structure
 
 ```
-├── train_balanced_ensemble.py     # End-to-end 50/50 balanced training & ensemble script
-├── train_lunar.py                 # Multi-seed ViT + LoRA training pipeline
+├── train.py                       # Main competition entrypoint for balanced ViT+LoRA training
+├── train_balanced_ensemble.py     # Multi-seed balanced ensemble training pipeline
+├── train_lunar.py                 # Core ViT + LoRA model definitions
 ├── inference.py                   # High-throughput ensemble inference engine
 ├── test_balanced_3cycles.py       # 3-cycle cross-validation validation script
 ├── submission.csv                 # Final competition submission (2,000 predictions)
-└── README.md                      # Complete methodology and replication guide
+├── requirements.txt               # Complete Python dependencies
+└── README.md                      # Methodology, ablation benchmarks, and replication guide
 ```
 
 ---
 
 ## 📦 Model Weights & Checkpoints
 
-The trained LoRA adapter weights for the ensemble models are organized as follows:
-* **Seed 42 Balanced Checkpoint:** `lunar_model_output/best_model/`
+The trained LoRA adapter weights for the ensemble models are available for direct public download:
+* **Release Download:** [v1.0.0 Model Weights (model_weights.zip)](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/model_weights.zip)
+* **Direct Checkpoint (.pth):** [best_model.pth](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/best_model.pth)
 * **Adapter Format:** HuggingFace PEFT / SafeTensors (`adapter_model.safetensors`, `adapter_config.json`)
 * **Base Architecture:** `google/vit-base-patch16-224-in21k`
-
-*(To download or evaluate pre-trained weights directly, refer to the releases tab or the project drive link in the competition submission).*
 
 ---
 
@@ -101,12 +102,12 @@ The trained LoRA adapter weights for the ensemble models are organized as follow
 
 ### 1. Environment Setup
 ```bash
-pip install torch torchvision transformers peft pillow pandas numpy scikit-learn
+pip install -r requirements.txt
 ```
 
 ### 2. Train the Balanced Ensemble
 ```bash
-python train_balanced_ensemble.py
+python train.py
 ```
 
 ### 3. Generate Competition Predictions
