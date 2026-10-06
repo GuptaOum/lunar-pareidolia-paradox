@@ -152,11 +152,19 @@ class LunarEnsemble(nn.Module):
 
         self.models = nn.ModuleList([MultimodalLunarViT() for _ in range(len(paths))])
         for idx, (m, path) in enumerate(zip(self.models, paths)):
-            if os.path.exists(path):
-                print(f"Loading Fold {idx + 1} weights from: {path}")
-                m.load_state_dict(torch.load(path, map_location="cpu"))
-            else:
-                print(f"Warning: Checkpoint not found at: {path}")
+            if not os.path.exists(path):
+                print(f"Checkpoint not found locally at {path}.")
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                url = f"https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v2.0.0/fold_{idx}_best.pth"
+                print(f"Auto-downloading Fold {idx + 1} weights from GitHub Releases v2.0.0: {url} ...")
+                import urllib.request
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req) as resp, open(path, 'wb') as f_out:
+                    f_out.write(resp.read())
+                print(f"Fold {idx + 1} weights successfully downloaded!")
+
+            print(f"Loading Fold {idx + 1} weights from: {path}")
+            m.load_state_dict(torch.load(path, map_location="cpu"))
 
         self.to(self.device)
         self.eval()
