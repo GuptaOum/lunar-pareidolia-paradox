@@ -54,7 +54,7 @@ How we systematically engineered the pipeline to surpass the 80% and 90% accurac
 | 1 | Baseline ViT (Standard sampling) | 77.12% | Heavy bias toward majority class (Hills 63.7%). Crater recall was low. |
 | 2 | ViT + LoRA (r=16, alpha=32) + Class Weights | 79.40% | Improved crater recall, but loss landscape was noisy with high variance. |
 | 3 | ViT + LoRA + **50/50 Balanced Resampling** | **82.36%** | Balanced gradient backpropagation; single-model breakthrough. |
-| 4 | **2-Seed Soft-Voting Ensemble (Champion)** | **89.94%** | Independent weight trajectories cancel out fringe edge-case noise. |
+| 4 | **2-Seed Soft-Voting Ensemble** | **89.94%** | Independent weight trajectories cancel out fringe edge-case noise. |
 
 ---
 

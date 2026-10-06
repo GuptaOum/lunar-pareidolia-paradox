@@ -3,6 +3,10 @@ train_images/
 eval_images/
 *.zip
 lunar_model_output/
+lunar_ensemble_80plus_output/
+lunar_generalizer_80plus_output/
+lunar_solver_output/
+*.pth
 *.csv
 aws_train_lunar.ps1
 
