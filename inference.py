@@ -1,79 +1,47 @@
 import os
-import torch
+import argparse
 import pandas as pd
-import numpy as np
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from PIL import Image
-from tqdm import tqdm
-from transformers import ViTForImageClassification
-from peft import PeftModel
+import torch
+from ensemble_model import LunarEnsemble
 
-TEST_IMG_DIR = "./eval_images"
-TEST_META_CSV = "./test_metadata.csv"
-OUTPUT_DIR = "./lunar_model_output"
-BATCH_SIZE = 32
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEFAULT_TEST_IMG_DIR = "./eval_images"
+DEFAULT_TEST_META_CSV = "./test_metadata.csv"
+DEFAULT_OUTPUT_CSV = "./submission.csv"
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
-])
+def run_ensemble_inference(img_dir=DEFAULT_TEST_IMG_DIR, meta_csv=DEFAULT_TEST_META_CSV, output_csv=DEFAULT_OUTPUT_CSV):
+    print("=" * 70)
+    print("  LUNAR 3-FOLD UNIFIED ENSEMBLE INFERENCE ENGINE (v2.0)")
+    print("=" * 70)
 
-class LunarDataset(Dataset):
-    def __init__(self, metadata_df, img_dir, transform=None):
-        self.metadata = metadata_df.reset_index(drop=True)
-        self.img_dir = img_dir
-        self.transform = transform
+    if not os.path.exists(meta_csv):
+        raise FileNotFoundError(f"Metadata file not found: {meta_csv}")
+    if not os.path.exists(img_dir):
+        raise FileNotFoundError(f"Image directory not found: {img_dir}")
 
-    def __len__(self):
-        return len(self.metadata)
+    test_df = pd.read_csv(meta_csv)
+    print(f"Loaded test metadata: {len(test_df)} images to predict.")
 
-    def __getitem__(self, idx):
-        row = self.metadata.iloc[idx]
-        img_name = row['image_id']
-        img_path = os.path.join(self.img_dir, img_name)
-        image = Image.open(img_path).convert('RGB')
-        sun_azimuth = row['sun_azimuth_angle']
-        image = image.rotate(-sun_azimuth, resample=Image.BILINEAR)
-        if self.transform:
-            image = self.transform(image)
-        return image, img_name
+    # Initialize the unified ensemble (loads all 3 folds into 1 container)
+    ensemble = LunarEnsemble(threshold=0.768)
 
-def predict_probs(model_path):
-    test_df = pd.read_csv(TEST_META_CSV)
-    test_dataset = LunarDataset(test_df, TEST_IMG_DIR, transform=transform)
-    test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=4)
-    base_model = ViTForImageClassification.from_pretrained(
-        "google/vit-base-patch16-224-in21k", num_labels=2, ignore_mismatched_sizes=True
-    )
-    model = PeftModel.from_pretrained(base_model, model_path)
-    model.to(DEVICE)
-    model.eval()
-    all_probs = []
-    all_names = []
-    with torch.no_grad():
-        for images, img_names in tqdm(test_loader, desc=f"Inference [{model_path}]"):
-            images = images.to(DEVICE)
-            outputs = model(images)
-            probs = torch.softmax(outputs.logits, dim=1)
-            all_probs.append(probs.cpu().numpy())
-            all_names.extend(img_names)
-    return all_names, np.concatenate(all_probs, axis=0)
+    # Run all 3 model predictions in one go with TTA
+    results_df = ensemble.predict_dataset(test_df, img_dir, batch_size=32, apply_tta=True)
+
+    # Save output
+    sub_df = results_df[["image_id", "label"]]
+    sub_df.to_csv(output_csv, index=False)
+
+    print("\n" + "-" * 70)
+    print(f"Saved final unified ensemble predictions to: {output_csv}")
+    print(f"Prediction Class Distribution:\n{sub_df['label'].value_counts().to_dict()}")
+    print("Inference successfully complete in one unified execution!")
+    print("-" * 70)
 
 if __name__ == "__main__":
-    paths = [os.path.join(OUTPUT_DIR, "seed_42_best"), os.path.join(OUTPUT_DIR, "seed_123_best")]
-    all_probs = []
-    img_names = None
-    for p in paths:
-        names, probs = predict_probs(p)
-        all_probs.append(probs)
-        if img_names is None: img_names = names
-        
-    ensemble_probs = np.mean(all_probs, axis=0)
-    final_preds = np.argmax(ensemble_probs, axis=1)
-    sub_df = pd.DataFrame({"image_id": img_names, "label": final_preds})
-    sub_csv_path = os.path.join(OUTPUT_DIR, "submission_2seed_ensemble.csv")
-    sub_df.to_csv(sub_csv_path, index=False)
-    print(f"Saved to {sub_csv_path}")
+    parser = argparse.ArgumentParser(description="Lunar Unified Ensemble Inference")
+    parser.add_argument("--img_dir", type=str, default=DEFAULT_TEST_IMG_DIR, help="Path to evaluation images directory")
+    parser.add_argument("--meta_csv", type=str, default=DEFAULT_TEST_META_CSV, help="Path to test metadata CSV")
+    parser.add_argument("--output", type=str, default=DEFAULT_OUTPUT_CSV, help="Path to save output submission CSV")
+    args = parser.parse_args()
+
+    run_ensemble_inference(args.img_dir, args.meta_csv, args.output)
