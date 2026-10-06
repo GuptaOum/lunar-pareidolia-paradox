@@ -11,9 +11,20 @@ from transformers import ViTModel
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
 
-DEFAULT_TEST_IMG_DIR = "./eval_images"
-DEFAULT_TEST_META_CSV = "./test_metadata.csv"
-DEFAULT_OUTPUT_CSV = "./submission.csv"
+# ==============================================================================
+# 🎯 EVALUATOR CONFIGURATION: PLACEHOLDER FOR TEST DATA
+# ==============================================================================
+# Evaluator: Set the path to your test data below, OR pass them via CLI:
+#   python inference.py --img_dir <path_to_images> --meta_csv <path_to_csv>
+#
+# If you drop your test images into './eval_images' or './test_images' and your
+# metadata into './test_metadata.csv', simply run:
+#   python inference.py
+# ==============================================================================
+DEFAULT_TEST_IMG_DIR = "./eval_images"        # <-- [EVALUATOR PLACEHOLDER: Path to test images folder]
+DEFAULT_TEST_META_CSV = "./test_metadata.csv" # <-- [EVALUATOR PLACEHOLDER: Path to test metadata CSV]
+DEFAULT_OUTPUT_CSV = "./submission.csv"       # <-- Path where output predictions will be saved
+# ==============================================================================
 
 # -------------------------------------------------------------
 # Physics-Informed Solar Ray & Shadow Gradient Helpers
@@ -34,7 +45,7 @@ def compute_shadow_gradient(img_array, azimuth_deg):
     norm_grad = (dir_grad - dir_grad.min()) / (dir_grad.max() - dir_grad.min() + 1e-8)
     return norm_grad.astype(np.float32)
 
-def preprocess_lunar_image(image_input, azimuth_deg):
+def preprocess_lunar_image(image_input, azimuth_deg=0.0):
     """
     Converts a lunar image into the normalized 3-channel physics representation:
     Channel 1: Sun-to-North aligned image
@@ -112,32 +123,74 @@ class MultimodalLunarViT(nn.Module):
         return logits
 
 # -------------------------------------------------------------
-# Dataset for Batch Inference
+# Adaptive Dataset for Batch Inference
 # -------------------------------------------------------------
 class LunarInferenceDataset(Dataset):
     def __init__(self, metadata_df, img_dir):
         self.metadata = metadata_df.reset_index(drop=True)
         self.img_dir = img_dir
 
+        # Smart column auto-detection
+        self.img_col, self.az_col = self._detect_columns(self.metadata)
+
+    def _detect_columns(self, df):
+        # Auto-detect image identifier column
+        img_col = None
+        for candidate in ['image_id', 'id', 'image', 'filename', 'file_name', 'name', 'img']:
+            for c in df.columns:
+                if str(c).strip().lower() == candidate:
+                    img_col = c
+                    break
+            if img_col:
+                break
+        if img_col is None:
+            img_col = df.columns[0]
+
+        # Auto-detect sun azimuth angle column
+        az_col = None
+        for candidate in ['sun_azimuth_angle', 'sun_azimuth', 'azimuth', 'sun_angle', 'angle', 'azimuth_angle']:
+            for c in df.columns:
+                if str(c).strip().lower() == candidate:
+                    az_col = c
+                    break
+            if az_col:
+                break
+
+        return img_col, az_col
+
     def __len__(self):
         return len(self.metadata)
 
     def __getitem__(self, idx):
         row = self.metadata.iloc[idx]
-        img_name = row['image_id']
+        img_name = str(row[self.img_col])
         img_path = os.path.join(self.img_dir, img_name)
-        azimuth = float(row['sun_azimuth_angle'])
+
+        if not os.path.exists(img_path):
+            # Check with extension fallbacks if omitted in CSV
+            for ext in ['.png', '.jpg', '.jpeg']:
+                if os.path.exists(img_path + ext):
+                    img_path = img_path + ext
+                    break
+
+        azimuth = 0.0
+        if self.az_col and self.az_col in row and not pd.isna(row[self.az_col]):
+            try:
+                azimuth = float(row[self.az_col])
+            except (ValueError, TypeError):
+                azimuth = 0.0
+
         img_tensor, angle_feat = preprocess_lunar_image(img_path, azimuth)
         return img_tensor, angle_feat, img_name
 
 # -------------------------------------------------------------
-# Unified 3-Fold Ensemble Model
+# Unified 3-Fold Ensemble Model with Auto-Downloader
 # -------------------------------------------------------------
 class LunarEnsemble(nn.Module):
     """
     Unified Ensemble Model that encapsulates all 3 fold models into a single container.
     Executes all 3 model predictions in one go, aggregates soft probabilities with TTA,
-    and returns final predictions.
+    and returns final calibrated predictions.
     """
     DEFAULT_WEIGHT_PATHS = [
         os.path.join(os.path.dirname(__file__), "lunar_generalizer_80plus_output", f"fold_{i}_best.pth")
@@ -172,7 +225,7 @@ class LunarEnsemble(nn.Module):
     def forward(self, pixel_values, angle_feats, apply_tta=True):
         """
         Executes all 3 models in ONE pass and averages soft-voting probabilities.
-        If apply_tta=True, also performs horizontal-flip TTA and averages across 6 passes.
+        If apply_tta=True, also performs horizontal-flip TTA and averages across passes.
         """
         pixel_values = pixel_values.to(self.device)
         angle_feats = angle_feats.to(self.device)
@@ -195,8 +248,9 @@ class LunarEnsemble(nn.Module):
             return ens_probs
 
     def predict_dataset(self, metadata_df, img_dir, batch_size=32, apply_tta=True):
+        dataset = LunarInferenceDataset(metadata_df, img_dir)
         loader = DataLoader(
-            LunarInferenceDataset(metadata_df, img_dir),
+            dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=4 if os.name != 'nt' else 0
@@ -223,18 +277,60 @@ class LunarEnsemble(nn.Module):
             "prob_depth": all_probs[:, 0]
         })
 
+# -------------------------------------------------------------
+# Smart Evaluator-Adaptive Path Resolver
+# -------------------------------------------------------------
+def resolve_evaluator_inputs(img_dir, meta_csv):
+    """
+    Intelligently resolves image directory and metadata file:
+    - Auto-detects custom folder names (e.g. test_images, eval_images, Test, test)
+    - Auto-detects custom CSV names (e.g. test_metadata.csv, eval_metadata.csv, test.csv)
+    - Auto-generates metadata if evaluator only provides an image folder
+    """
+    # 1. Resolve image directory
+    if not os.path.exists(img_dir):
+        candidates = ["./eval_images", "./test_images", "./Test", "./test", "./images", "./data/eval_images", "./data/test_images"]
+        for c in candidates:
+            if os.path.exists(c) and os.path.isdir(c):
+                print(f"Auto-detected test image directory: {c}")
+                img_dir = c
+                break
+
+    # 2. Resolve metadata CSV
+    resolved_meta = meta_csv
+    if meta_csv and not os.path.exists(meta_csv):
+        candidates = ["./test_metadata.csv", "./eval_metadata.csv", "./test.csv", "./eval.csv", "./metadata.csv"]
+        for c in candidates:
+            if os.path.exists(c) and os.path.isfile(c):
+                print(f"Auto-detected test metadata CSV: {c}")
+                resolved_meta = c
+                break
+
+    # 3. If no metadata CSV found, scan the image folder directly
+    if (not resolved_meta or not os.path.exists(resolved_meta)) and os.path.exists(img_dir):
+        valid_exts = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
+        img_files = sorted([f for f in os.listdir(img_dir) if f.lower().endswith(valid_exts)])
+        if img_files:
+            print(f"No metadata CSV provided. Found {len(img_files)} test images in {img_dir}. Auto-generating metadata...")
+            df = pd.DataFrame({"image_id": img_files, "sun_azimuth_angle": 0.0})
+            return img_dir, df
+
+    if not os.path.exists(img_dir):
+        raise FileNotFoundError(f"Image directory not found: '{img_dir}'. Please provide path via --img_dir <path>")
+    if not os.path.exists(resolved_meta):
+        raise FileNotFoundError(f"Metadata file not found: '{resolved_meta}'. Please provide path via --meta_csv <path>")
+
+    df = pd.read_csv(resolved_meta)
+    return img_dir, df
+
 def run_ensemble_inference(img_dir=DEFAULT_TEST_IMG_DIR, meta_csv=DEFAULT_TEST_META_CSV, output_csv=DEFAULT_OUTPUT_CSV):
     print("=" * 70)
     print("  LUNAR 3-FOLD UNIFIED ENSEMBLE INFERENCE ENGINE (v2.0)")
     print("=" * 70)
 
-    if not os.path.exists(meta_csv):
-        raise FileNotFoundError(f"Metadata file not found: {meta_csv}")
-    if not os.path.exists(img_dir):
-        raise FileNotFoundError(f"Image directory not found: {img_dir}")
-
-    test_df = pd.read_csv(meta_csv)
-    print(f"Loaded test metadata: {len(test_df)} images to predict.")
+    # Smart auto-resolve for whatever files the evaluator provides
+    img_dir, test_df = resolve_evaluator_inputs(img_dir, meta_csv)
+    print(f"Evaluating on {len(test_df)} images from '{img_dir}'...")
 
     ensemble = LunarEnsemble(threshold=0.768)
     results_df = ensemble.predict_dataset(test_df, img_dir, batch_size=32, apply_tta=True)
@@ -243,7 +339,7 @@ def run_ensemble_inference(img_dir=DEFAULT_TEST_IMG_DIR, meta_csv=DEFAULT_TEST_M
     sub_df.to_csv(output_csv, index=False)
 
     print("\n" + "-" * 70)
-    print(f"Saved final unified ensemble predictions to: {output_csv}")
+    print(f"Saved final predictions to: {output_csv}")
     print(f"Prediction Class Distribution:\n{sub_df['label'].value_counts().to_dict()}")
     print("Inference successfully complete in one unified execution!")
     print("-" * 70)
