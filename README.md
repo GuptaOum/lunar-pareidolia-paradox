@@ -102,21 +102,29 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 ## 📁 Repository Structure
 
 ```
-├── train.py                       # Main competition training pipeline (Balanced ViT + LoRA)
-├── train_lunar.py                 # ViT + LoRA model definitions & 5-fold CV architecture
-├── inference.py                   # High-throughput ensemble inference engine
-├── submission.csv                 # Final competition submission (2,000 predictions)
-├── requirements.txt               # Complete Python dependencies
-└── README.md                      # Methodology, ablation benchmarks, and replication guide
+├── train_pareidolia_80plus_generalizer.py # v2.0 Flagship: 3-Fold Stratified Generalizer with Shadow-Ray Gradients & TTA
+├── train_pareidolia_ensemble_80plus.py    # v1.5 Multimodal Ensemble Pipeline
+├── run_generalizer_80plus_aws.ps1         # Automated AWS EC2 GPU Training Runner
+├── train.py                               # Competition baseline training pipeline
+├── inference.py                           # Inference engine
+├── submission.csv                         # Competition submission
+├── requirements.txt                       # Complete Python dependencies
+└── README.md                              # Methodology, ablation benchmarks, and replication guide
 ```
 
 ---
 
 ## 📦 Model Weights & Checkpoints
 
-The trained LoRA adapter weights for the ensemble models are available for direct public download:
+### 🌟 v2.0 Advanced Physics-Informed Generalizer (Latest)
+* **GitHub Release:** [v2.0.0 Advanced Generalizer Weights & Predictions](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/tag/v2.0.0)
+  * `fold_0_best.pth`, `fold_1_best.pth`, `fold_2_best.pth` (Full 3-Fold Stratified Models)
+  * `submission_generalizer_median.csv` (Optimal 50/50 Balanced Test Predictions)
+  * `oof_predictions.csv` (Complete Out-Of-Fold Probabilities for all 7,854 images)
+
+### 📌 v1.0.0 ViT-LoRA Model (Legacy Competition Baseline)
 * **Hugging Face Hub:** [kjfk/lunar-pareidolia-vit-lora](https://huggingface.co/kjfk/lunar-pareidolia-vit-lora)
-* **Release Download:** [v1.0.0 Model Weights (model_weights.zip)](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/model_weights.zip)
+* **GitHub Release:** [v1.0.0 Model Weights (model_weights.zip)](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/model_weights.zip)
 * **Direct Checkpoint (.pth):** [best_model.pth](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/best_model.pth)
 * **Adapter Format:** HuggingFace PEFT / SafeTensors (`adapter_model.safetensors`, `adapter_config.json`)
 * **Base Architecture:** `google/vit-base-patch16-224-in21k`

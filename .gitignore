@@ -14,3 +14,20 @@ aws_train_lunar.ps1
 __pycache__/
 *.pyc
 .env
+
+# Scratch and intermediate scripts
+backup_read.py
+eval_sample_600.py
+eval_top4_on_1000.py
+find_best_ensemble_combo.py
+robust_ensemble_search.py
+test_on_train.py
+train_lunar_backup.py
+verify_grid.py
+run_fast.ps1
+run_77.ps1
+run_ensemble.ps1
+recover_run.ps1
+run_lunar_solver_aws.ps1
+train_ensemble_5.py
+train_pareidolia_solver.py
