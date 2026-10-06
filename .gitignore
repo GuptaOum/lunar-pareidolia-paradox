@@ -1,33 +1,48 @@
-# Ignore datasets and output directories
+# Competition Rulebook: Only canonical files (README.md, requirements.txt, train.py, inference.py, submission.csv) are tracked.
+
+# Datasets and extracted images
 train_images/
 eval_images/
+Train/
+Test/
 *.zip
+
+# Model Checkpoints and Weights
+*.pth
+*.safetensors
+*.bin
+*.pt
+
+# Output directories
 lunar_model_output/
 lunar_ensemble_80plus_output/
 lunar_generalizer_80plus_output/
 lunar_solver_output/
-*.pth
-*.csv
-aws_train_lunar.ps1
+output/
 
-# Python
+# CSV files (Keep only final competition submission.csv)
+*.csv
+!submission.csv
+
+# Scripts outside canonical train.py and inference.py
+ensemble_model.py
+train_lunar*.py
+train_pareidolia_*.py
+train_ensemble_*.py
+run_*.ps1
+aws_*.ps1
+recover_run.ps1
+*.ps1
+backup_*.py
+eval_*.py
+test_*.py
+robust_*.py
+find_*.py
+verify_*.py
+
+# Python environment and cache
 __pycache__/
 *.pyc
 .env
-
-# Scratch and intermediate scripts
-backup_read.py
-eval_sample_600.py
-eval_top4_on_1000.py
-find_best_ensemble_combo.py
-robust_ensemble_search.py
-test_on_train.py
-train_lunar_backup.py
-verify_grid.py
-run_fast.ps1
-run_77.ps1
-run_ensemble.ps1
-recover_run.ps1
-run_lunar_solver_aws.ps1
-train_ensemble_5.py
-train_pareidolia_solver.py
+.venv/
+env/

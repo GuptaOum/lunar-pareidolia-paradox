@@ -102,14 +102,12 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 ## 📁 Repository Structure
 
 ```
-├── train_pareidolia_80plus_generalizer.py # v2.0 Flagship: 3-Fold Stratified Generalizer with Shadow-Ray Gradients & TTA
-├── train_pareidolia_ensemble_80plus.py    # v1.5 Multimodal Ensemble Pipeline
-├── run_generalizer_80plus_aws.ps1         # Automated AWS EC2 GPU Training Runner
-├── train.py                               # Competition baseline training pipeline
-├── inference.py                           # Inference engine
-├── submission.csv                         # Competition submission
-├── requirements.txt                       # Complete Python dependencies
-└── README.md                              # Methodology, ablation benchmarks, and replication guide
+├── train.py          # Main model training pipeline
+├── inference.py      # Unified 3-Fold Ensemble inference engine (predicts in one go)
+├── submission.csv    # Final competition submission (2,000 predictions)
+├── requirements.txt  # Complete Python dependencies
+├── .gitignore        # Strictly ignores all datasets, weights, and scratch files
+└── README.md         # Methodology, benchmarks, and replication guide
 ```
 
 ---
