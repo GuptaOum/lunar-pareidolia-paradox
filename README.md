@@ -114,13 +114,25 @@ $$P_{\text{ensemble}}(y=c) = \frac{1}{M} \sum_{m=1}^{M} P_{m}(y=c)$$
 
 ## 📦 Model Weights & Checkpoints
 
-### 🌟 v2.0 Advanced Physics-Informed Generalizer (Latest)
+### 🚀 v3.0.0 Pure Vision Reflection Architecture (Domain-Shift Immune)
+* **GitHub Release:** [v3.0.0 Pure Vision Weights & Predictions](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/tag/v3.0.0)
+  * `pure_vision_fold_0.pth`, `pure_vision_fold_1.pth`, `pure_vision_fold_2.pth` (Full 3-Fold Stratified Pure Vision Models)
+  * `submission_pure_vision_median.csv` (Exact 50/50 Balanced Test Predictions: 1,000 Depth / 1,000 Rise)
+  * **Key Innovations:**
+    * **Zero Shortcut Learning:** Completely removed `[sin, cos]` from the classification head so the model cannot memorize spurious numerical correlations.
+    * **Reflection Padding (`cv2.BORDER_REFLECT_101`):** Completely eliminates black triangular corners from canvas rotation.
+    * **Inscribed Center Crop (`CenterCrop(200)`):** Guarantees the ViT sees 100% genuine continuous lunar surface pixels.
+    * **Standardized Sun-to-North Illumination:** Rotates counter-clockwise by `+azimuth` so sunlight physically locks to North for every crop.
+
+### 🌟 v2.0 Advanced Physics-Informed Generalizer
 * **GitHub Release:** [v2.0.0 Advanced Generalizer Weights & Predictions](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/tag/v2.0.0)
   * `fold_0_best.pth`, `fold_1_best.pth`, `fold_2_best.pth` (Full 3-Fold Stratified Models)
   * `submission_generalizer_median.csv` (Optimal 50/50 Balanced Test Predictions)
   * `oof_predictions.csv` (Complete Out-Of-Fold Probabilities for all 7,854 images)
 
-### 📌 v1.0.0 ViT-LoRA Model (Legacy Competition Baseline)
+### 📌 v1.0.0 ViT-LoRA Model (Legacy Competition Baseline - Rank 9 Top 10)
+* **Official Placement:** **Rank 9** (Top 10 Finalist) | **IEEE Certificate of Merit**
+* **Rise Recall:** **74.1%** (741 / 1,000 elevations correctly identified — one of the highest in the competition)
 * **Hugging Face Hub:** [kjfk/lunar-pareidolia-vit-lora](https://huggingface.co/kjfk/lunar-pareidolia-vit-lora)
 * **GitHub Release:** [v1.0.0 Model Weights (model_weights.zip)](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/model_weights.zip)
 * **Direct Checkpoint (.pth):** [best_model.pth](https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v1.0.0/best_model.pth)
