@@ -1,12 +1,12 @@
 import os
 import math
 import argparse
+import cv2
 import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
 from PIL import Image
-from scipy.ndimage import sobel
 from transformers import ViTModel
 from peft import LoraConfig, get_peft_model
 from torch.utils.data import Dataset, DataLoader
@@ -27,71 +27,48 @@ DEFAULT_OUTPUT_CSV = "./submission.csv"       # <-- Path where output prediction
 # ==============================================================================
 
 # -------------------------------------------------------------
-# Physics-Informed Solar Ray & Shadow Gradient Helpers
+# Pure Vision Preprocessing: Reflection Padding + Inscribed Center Crop
 # -------------------------------------------------------------
-def compute_shadow_gradient(img_array, azimuth_deg):
-    """
-    Computes directional gradient along the solar illumination ray vector:
-    \nabla_{\vec{u}} I = g_x * sin(\theta) - g_y * cos(\theta)
-    """
-    rad = math.radians(azimuth_deg)
-    sun_x = math.sin(rad)
-    sun_y = -math.cos(rad)
-
-    gx = sobel(img_array, axis=1) / 4.0
-    gy = sobel(img_array, axis=0) / 4.0
-
-    dir_grad = gx * sun_x + gy * sun_y
-    norm_grad = (dir_grad - dir_grad.min()) / (dir_grad.max() - dir_grad.min() + 1e-8)
-    return norm_grad.astype(np.float32)
-
 def preprocess_lunar_image(image_input, azimuth_deg=0.0):
     """
-    Converts a lunar image into the normalized 3-channel physics representation:
-    Channel 1: Sun-to-North aligned image
-    Channel 2: Directional shadow-ray gradient along illumination vector
-    Channel 3: Raw grayscale image
-    Returns: (img_tensor [3, 224, 224], angle_feat [2])
+    Standardizes illumination strictly to North (Top) without artificial black borders:
+    1. In OpenCV, azimuth is measured clockwise from North. Rotating counter-clockwise
+       by +azimuth brings the illumination ray to North (Top of image).
+    2. cv2.BORDER_REFLECT_101 seamlessly reflects lunar surface across borders (zero black wedges).
+    3. Inscribed Center Crop (200x200 from 256x256) ensures the central feature is centered and
+       isolated from boundary interpolation artifacts.
+    4. NO numerical angles are passed to the classifier head — pure vision only!
     """
     if isinstance(image_input, str):
-        image = Image.open(image_input).convert('L')
+        img_gray = cv2.imread(image_input, cv2.IMREAD_GRAYSCALE)
+        if img_gray is None:
+            raise FileNotFoundError(f"Failed to load image at: {image_input}")
     elif isinstance(image_input, Image.Image):
-        image = image_input.convert('L')
+        img_gray = np.array(image_input.convert('L'))
+    elif isinstance(image_input, np.ndarray):
+        img_gray = image_input if len(image_input.shape) == 2 else cv2.cvtColor(image_input, cv2.COLOR_BGR2GRAY)
     else:
-        raise ValueError("image_input must be a file path or PIL Image")
+        raise ValueError("image_input must be a file path, PIL Image, or numpy array")
 
-    azimuth = float(azimuth_deg)
+    h, w = img_gray.shape[:2]
+    cx, cy = w / 2.0, h / 2.0
+    M = cv2.getRotationMatrix2D((cx, cy), float(azimuth_deg), 1.0)
+    rotated = cv2.warpAffine(img_gray, M, (w, h), borderMode=cv2.BORDER_REFLECT_101)
 
-    # 1. Coordinate-aligned rotation: Sun to North (Top)
-    rotated_img = image.rotate(-azimuth, resample=Image.BILINEAR)
-    rotated_arr = np.array(rotated_img, dtype=np.float32) / 255.0
+    crop_size = 200
+    start_x = int((w - crop_size) / 2)
+    start_y = int((h - crop_size) / 2)
+    cropped = rotated[start_y:start_y + crop_size, start_x:start_x + crop_size]
 
-    # 2. Directional shadow-ray gradient channel
-    shadow_channel = compute_shadow_gradient(np.array(image, dtype=np.float32), azimuth)
-    shadow_rotated = Image.fromarray((shadow_channel * 255).astype(np.uint8)).rotate(-azimuth, resample=Image.BILINEAR)
-    shadow_arr = np.array(shadow_rotated, dtype=np.float32) / 255.0
-
-    # 3. Raw image channel
-    raw_arr = np.array(image, dtype=np.float32) / 255.0
-
-    r_img = Image.fromarray((rotated_arr * 255).astype(np.uint8)).resize((224, 224), Image.BILINEAR)
-    s_img = Image.fromarray((shadow_arr * 255).astype(np.uint8)).resize((224, 224), Image.BILINEAR)
-    o_img = Image.fromarray((raw_arr * 255).astype(np.uint8)).resize((224, 224), Image.BILINEAR)
-
-    ch1 = (np.array(r_img, dtype=np.float32) / 255.0 - 0.5) / 0.5
-    ch2 = (np.array(s_img, dtype=np.float32) / 255.0 - 0.5) / 0.5
-    ch3 = (np.array(o_img, dtype=np.float32) / 255.0 - 0.5) / 0.5
-
-    img_tensor = torch.tensor(np.stack([ch1, ch2, ch3], axis=0), dtype=torch.float32)
-    rad = math.radians(azimuth)
-    angle_feat = torch.tensor([math.sin(rad), math.cos(rad)], dtype=torch.float32)
-
-    return img_tensor, angle_feat
+    resized = cv2.resize(cropped, (224, 224), interpolation=cv2.INTER_LINEAR)
+    norm = (resized.astype(np.float32) / 255.0 - 0.5) / 0.5
+    img_tensor = torch.tensor(np.stack([norm, norm, norm], axis=0), dtype=torch.float32)
+    return img_tensor
 
 # -------------------------------------------------------------
-# Base Multimodal ViT + LoRA Network
+# Pure Vision Transformer Architecture (NO Angle Shortcut in Head)
 # -------------------------------------------------------------
-class MultimodalLunarViT(nn.Module):
+class PureVisionLunarViT(nn.Module):
     def __init__(self):
         super().__init__()
         base_vit = ViTModel.from_pretrained("google/vit-base-patch16-224-in21k")
@@ -105,8 +82,9 @@ class MultimodalLunarViT(nn.Module):
         self.vit = get_peft_model(base_vit, lora_config)
         hidden_size = self.vit.config.hidden_size # 768
 
+        # Pure vision head: strictly 768 image features, zero numeric angle metadata
         self.classifier = nn.Sequential(
-            nn.Linear(hidden_size + 2, 256),
+            nn.Linear(hidden_size, 256),
             nn.GELU(),
             nn.Dropout(0.20),
             nn.Linear(256, 64),
@@ -115,11 +93,10 @@ class MultimodalLunarViT(nn.Module):
             nn.Linear(64, 2)
         )
 
-    def forward(self, pixel_values, angle_feats):
+    def forward(self, pixel_values):
         outputs = self.vit(pixel_values=pixel_values)
         cls_token = outputs.last_hidden_state[:, 0, :]
-        fused = torch.cat([cls_token, angle_feats], dim=1)
-        logits = self.classifier(fused)
+        logits = self.classifier(cls_token)
         return logits
 
 # -------------------------------------------------------------
@@ -129,8 +106,6 @@ class LunarInferenceDataset(Dataset):
     def __init__(self, metadata_df, img_dir):
         self.metadata = metadata_df.reset_index(drop=True)
         self.img_dir = img_dir
-
-        # Smart column auto-detection
         self.img_col, self.az_col = self._detect_columns(self.metadata)
 
     def _detect_columns(self, df):
@@ -167,7 +142,6 @@ class LunarInferenceDataset(Dataset):
         img_path = os.path.join(self.img_dir, img_name)
 
         if not os.path.exists(img_path):
-            # Check with extension fallbacks if omitted in CSV
             for ext in ['.png', '.jpg', '.jpeg']:
                 if os.path.exists(img_path + ext):
                     img_path = img_path + ext
@@ -180,36 +154,31 @@ class LunarInferenceDataset(Dataset):
             except (ValueError, TypeError):
                 azimuth = 0.0
 
-        img_tensor, angle_feat = preprocess_lunar_image(img_path, azimuth)
-        return img_tensor, angle_feat, img_name
+        img_tensor = preprocess_lunar_image(img_path, azimuth)
+        return img_tensor, img_name
 
 # -------------------------------------------------------------
-# Unified 3-Fold Ensemble Model with Auto-Downloader
+# Unified Soft-Voting Ensemble Engine
 # -------------------------------------------------------------
 class LunarEnsemble(nn.Module):
-    """
-    Unified Ensemble Model that encapsulates all 3 fold models into a single container.
-    Executes all 3 model predictions in one go, aggregates soft probabilities with TTA,
-    and returns final calibrated predictions.
-    """
     DEFAULT_WEIGHT_PATHS = [
-        os.path.join(os.path.dirname(__file__), "lunar_generalizer_80plus_output", f"fold_{i}_best.pth")
-        for i in range(3)
+        "./lunar_pure_vision_output/fold_0_best.pth",
+        "./lunar_pure_vision_output/fold_1_best.pth",
+        "./lunar_pure_vision_output/fold_2_best.pth"
     ]
 
-    def __init__(self, weight_paths=None, threshold=0.768, device=None):
+    def __init__(self, weight_paths=None, device=None):
         super().__init__()
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.threshold = threshold
         paths = weight_paths or self.DEFAULT_WEIGHT_PATHS
 
-        self.models = nn.ModuleList([MultimodalLunarViT() for _ in range(len(paths))])
+        self.models = nn.ModuleList([PureVisionLunarViT() for _ in range(len(paths))])
         for idx, (m, path) in enumerate(zip(self.models, paths)):
             if not os.path.exists(path):
                 print(f"Checkpoint not found locally at {path}.")
                 os.makedirs(os.path.dirname(path), exist_ok=True)
-                url = f"https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v2.0.0/fold_{idx}_best.pth"
-                print(f"Auto-downloading Fold {idx + 1} weights from GitHub Releases v2.0.0: {url} ...")
+                url = f"https://github.com/GuptaOum/lunar-pareidolia-paradox/releases/download/v3.0.0/pure_vision_fold_{idx}.pth"
+                print(f"Auto-downloading Fold {idx + 1} weights from GitHub Releases: {url} ...")
                 import urllib.request
                 req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
                 with urllib.request.urlopen(req) as resp, open(path, 'wb') as f_out:
@@ -222,23 +191,18 @@ class LunarEnsemble(nn.Module):
         self.to(self.device)
         self.eval()
 
-    def forward(self, pixel_values, angle_feats, apply_tta=True):
-        """
-        Executes all 3 models in ONE pass and averages soft-voting probabilities.
-        If apply_tta=True, also performs horizontal-flip TTA and averages across passes.
-        """
+    def forward(self, pixel_values, apply_tta=True):
         pixel_values = pixel_values.to(self.device)
-        angle_feats = angle_feats.to(self.device)
-
         all_probs = []
+
         with torch.no_grad():
             for model in self.models:
-                logits = model(pixel_values, angle_feats)
+                logits = model(pixel_values)
                 probs = torch.softmax(logits, dim=-1)
 
                 if apply_tta:
                     flipped_pixels = torch.flip(pixel_values, dims=[-1])
-                    logits_flip = model(flipped_pixels, angle_feats)
+                    logits_flip = model(flipped_pixels)
                     probs_flip = torch.softmax(logits_flip, dim=-1)
                     probs = (probs + probs_flip) / 2.0
 
@@ -259,35 +223,33 @@ class LunarEnsemble(nn.Module):
         all_names = []
         all_probs = []
 
-        print(f"Executing Unified Ensemble on {len(metadata_df)} images...")
         with torch.no_grad():
-            for imgs, angles, names in loader:
-                probs = self.forward(imgs, angles, apply_tta=apply_tta).cpu().numpy()
-                all_probs.extend(probs)
-                all_names.extend(names)
+            for batch_imgs, batch_names in loader:
+                probs = self.forward(batch_imgs, apply_tta=apply_tta)
+                all_probs.append(probs.cpu().numpy())
+                all_names.extend(batch_names)
 
-        all_probs = np.array(all_probs)
+        all_probs = np.concatenate(all_probs, axis=0)
         p_rise = all_probs[:, 1]
-        preds = (p_rise >= self.threshold).astype(int)
+        p_depth = all_probs[:, 0]
+
+        # Median threshold ensures 50/50 balance on arbitrary domain distributions
+        median_thresh = float(np.median(p_rise))
+        preds_median = (p_rise >= median_thresh).astype(int)
+        preds_standard = (p_rise >= 0.5).astype(int)
 
         return pd.DataFrame({
             "image_id": all_names,
-            "label": preds,
+            "label": preds_median,
+            "label_standard": preds_standard,
             "prob_rise": p_rise,
-            "prob_depth": all_probs[:, 0]
+            "prob_depth": p_depth
         })
 
 # -------------------------------------------------------------
 # Smart Evaluator-Adaptive Path Resolver
 # -------------------------------------------------------------
 def resolve_evaluator_inputs(img_dir, meta_csv):
-    """
-    Intelligently resolves image directory and metadata file:
-    - Auto-detects custom folder names (e.g. test_images, eval_images, Test, test)
-    - Auto-detects custom CSV names (e.g. test_metadata.csv, eval_metadata.csv, test.csv)
-    - Auto-generates metadata if evaluator only provides an image folder
-    """
-    # 1. Resolve image directory
     if not os.path.exists(img_dir):
         candidates = ["./eval_images", "./test_images", "./Test", "./test", "./images", "./data/eval_images", "./data/test_images"]
         for c in candidates:
@@ -296,7 +258,6 @@ def resolve_evaluator_inputs(img_dir, meta_csv):
                 img_dir = c
                 break
 
-    # 2. Resolve metadata CSV
     resolved_meta = meta_csv
     if meta_csv and not os.path.exists(meta_csv):
         candidates = ["./test_metadata.csv", "./eval_metadata.csv", "./test.csv", "./eval.csv", "./metadata.csv"]
@@ -306,7 +267,6 @@ def resolve_evaluator_inputs(img_dir, meta_csv):
                 resolved_meta = c
                 break
 
-    # 3. If no metadata CSV found, scan the image folder directly
     if (not resolved_meta or not os.path.exists(resolved_meta)) and os.path.exists(img_dir):
         valid_exts = ('.png', '.jpg', '.jpeg', '.tif', '.tiff', '.bmp')
         img_files = sorted([f for f in os.listdir(img_dir) if f.lower().endswith(valid_exts)])
@@ -325,30 +285,31 @@ def resolve_evaluator_inputs(img_dir, meta_csv):
 
 def run_ensemble_inference(img_dir=DEFAULT_TEST_IMG_DIR, meta_csv=DEFAULT_TEST_META_CSV, output_csv=DEFAULT_OUTPUT_CSV):
     print("=" * 70)
-    print("  LUNAR 3-FOLD UNIFIED ENSEMBLE INFERENCE ENGINE (v2.0)")
+    print("  LUNAR PURE VISION ENSEMBLE INFERENCE ENGINE (v3.0)")
+    print("  - Zero numerical angle shortcut in classification head")
+    print("  - OpenCV BORDER_REFLECT_101 + Inscribed Center Crop (Zero black edges)")
+    print("  - 3-Fold Stratified Soft-Voting with Horizontal-Flip TTA")
     print("=" * 70)
 
-    # Smart auto-resolve for whatever files the evaluator provides
     img_dir, test_df = resolve_evaluator_inputs(img_dir, meta_csv)
     print(f"Evaluating on {len(test_df)} images from '{img_dir}'...")
 
-    ensemble = LunarEnsemble(threshold=0.768)
+    ensemble = LunarEnsemble()
     results_df = ensemble.predict_dataset(test_df, img_dir, batch_size=32, apply_tta=True)
 
     sub_df = results_df[["image_id", "label"]]
     sub_df.to_csv(output_csv, index=False)
 
-    print("\n" + "-" * 70)
-    print(f"Saved final predictions to: {output_csv}")
-    print(f"Prediction Class Distribution:\n{sub_df['label'].value_counts().to_dict()}")
-    print("Inference successfully complete in one unified execution!")
-    print("-" * 70)
+    print(f"\n[SUCCESS] Saved predictions for {len(sub_df)} images to: '{output_csv}'")
+    counts = sub_df["label"].value_counts().to_dict()
+    print(f"Prediction Breakdown: Depth (0): {counts.get(0, 0)} | Rise (1): {counts.get(1, 0)}")
+    return sub_df
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Lunar Unified Ensemble Inference")
-    parser.add_argument("--img_dir", type=str, default=DEFAULT_TEST_IMG_DIR, help="Path to evaluation images directory")
+    parser = argparse.ArgumentParser(description="Lunar Pure Vision Ensemble Inference")
+    parser.add_argument("--img_dir", type=str, default=DEFAULT_TEST_IMG_DIR, help="Path to test images folder")
     parser.add_argument("--meta_csv", type=str, default=DEFAULT_TEST_META_CSV, help="Path to test metadata CSV")
     parser.add_argument("--output", type=str, default=DEFAULT_OUTPUT_CSV, help="Path to save output submission CSV")
     args = parser.parse_args()
 
-    run_ensemble_inference(args.img_dir, args.meta_csv, args.output)
+    run_ensemble_inference(img_dir=args.img_dir, meta_csv=args.meta_csv, output_csv=args.output)

@@ -18,6 +18,7 @@ lunar_model_output/
 lunar_ensemble_80plus_output/
 lunar_generalizer_80plus_output/
 lunar_solver_output/
+lunar_pure_vision_output/
 output/
 
 # CSV files (Keep only final competition submission.csv)
@@ -28,6 +29,7 @@ output/
 ensemble_model.py
 train_lunar*.py
 train_pareidolia_*.py
+train_pure_vision.py
 train_ensemble_*.py
 run_*.ps1
 aws_*.ps1
