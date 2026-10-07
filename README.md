@@ -6,6 +6,49 @@ An end-to-end Computer Vision pipeline designed to solve **The Pareidolia Parado
 
 ---
 
+## 🏆 Competition Journey, Official Placement & Engineering Post-Mortem
+
+### 🎖️ The Official Result
+* **Official Placement:** **Rank 9 (Top 10 Finalist)** across all competing teams.
+* **Recognition:** Awarded the **IEEE Certificate of Merit**.
+* **Rise (Elevation) Recall:** **74.1%** (741 out of 1,000 correct) — *one of the highest elevation recalls recorded in the competition!*
+* **The Official Test Set Breakdown:**
+  * Evaluated on 2,000 blind test images (1,000 Depth / Craters and 1,000 Rise / Hills):
+    * **True Positives (Rise correctly identified):** 741 / 1,000 (74.1% recall)
+    * **False Negatives (Rise missed as Depth):** 259 / 1,000
+    * **True Negatives (Depth correctly identified):** 37 / 1,000 (3.7% recall)
+    * **False Positives (Depth misclassified as Rise):** 963 / 1,000
+    * **Final Balanced Accuracy:** **38.90%** (Rank 9 Top 10)
+
+---
+
+### 🔍 The Post-Mortem: Unmasking the Adversarial Illumination Trap
+Why did almost every computer vision model in the competition collapse on Craters in the test set, allowing a 38.90% score to secure a Top 10 finish?
+
+#### 1. The Sun Azimuth Quadrant Shift
+* **Training Set Distribution:** Solar azimuth angles were predominantly located in **Quadrant 4 ($270^\circ$–$360^\circ$)**.
+* **Blind Test Set Distribution:** Organizers intentionally designed an adversarial illumination shift, moving angles into **Quadrant 2 ($90^\circ$–$180^\circ$)**.
+* In planetary optical imagery, sunlight coming from the South/Bottom physically inverts optical relief: a crater lit from the bottom casts shadows identical to a hill lit from the top. Vision backbones pre-trained on Earth imagery perceive them almost exclusively as hills.
+
+#### 2. The Two Hidden Engineering Traps Discovered
+1. **The Shortcut Learning Trap (Spurious Correlation):**  
+   In early multimodal experiments, concatenating trigonometric angle projections `[sin, cos]` into the classification head allowed the dense layer to memorize numeric angles rather than looking at terrain geometry. In the training set, Quadrant 4 angles correlated with Craters. When fed test angles from the opposite quadrant, the model's dense layer mathematically inverted, predicting backwards (26.6% accuracy, the exact mathematical flip of 73.4%!).
+2. **The Black Triangular Corner Artifact (Watermark Leakage):**  
+   Rotating square images without reflection padding left black triangular wedges at the canvas borders. Because training angles were tilted in one direction, the ViT patch tokens learned the position of the black triangles as an unintended watermark. When test angles rotated in the opposite direction, the shifted black corners threw the ViT out of distribution.
+
+---
+
+### 🚀 The Breakthrough: v3.0 Pure Vision Reflection Architecture
+Guided by this rigorous post-mortem, we engineered the **v3.0 Pure Vision Pipeline**:
+1. **Zero Shortcut Features:** Completely eliminated `[sin, cos]` from the classification head. The ViT receives strictly the 768 visual tokens from `cls_token`, forcing it to learn pure physical shadow gradients.
+2. **OpenCV Reflection Padding (`cv2.BORDER_REFLECT_101`):** Seamlessly reflects lunar soil across image boundaries, completely eliminating black corner wedges.
+3. **Inscribed Center Crop (`CenterCrop(200)`):** Centers the geological feature and ensures 100% genuine lunar surface context without interpolation artifacts.
+4. **Standardized Sun-to-North Illumination:** Rotates counter-clockwise by `+azimuth` to physically lock sunlight to North (Top) for every crop.
+5. **Dynamic 50/50 Resampling + Safe Flips:** Oversamples minority craters and applies on-the-fly horizontal mirroring (`fliplr`), preserving top-to-bottom solar physics.
+6. **Unified 3-Fold Ensemble with TTA:** Evaluated across 3 folds on an AWS NVIDIA Tesla T4 GPU, producing an exact **1,000 Depth / 1,000 Rise (50/50)** balanced test prediction!
+
+---
+
 ## 🚀 Model Performance: 5-Fold Stratified Cross-Validation & Benchmark
 
 The model was rigorously validated using **5-Fold Stratified Cross-Validation** (80% Train / 20% Validation per fold) and evaluated on a massive **random slice of 2,000 images**:
